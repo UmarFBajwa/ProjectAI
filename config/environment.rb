@@ -1,149 +1,53 @@
 require 'rake'
 require 'rspec/core/rake_task'
 
+# Set up gems listed in the Gemfile.
+# See: http://gembundler.com/bundler_setup.html
+#      http://stackoverflow.com/questions/7243486/why-do-you-need-require-bundler-setup
+ENV['BUNDLE_GEMFILE'] ||= File.expand_path('../../Gemfile', __FILE__)
 
-require ::File.expand_path('../config/environment', __FILE__)
+require 'bundler/setup' if File.exists?(ENV['BUNDLE_GEMFILE'])
+
+# Require gems we care about
+require 'rubygems'
+
+require 'uri'
+require 'pathname'
+
+require 'pg'
+require 'active_record'
+require 'logger'
+
+require 'sinatra'
+require "sinatra/reloader" if development?
+
+require 'erb'
+require 'dotenv'
+Dotenv.load
+
+# Some helper constants for path-centric logic
+APP_ROOT = Pathname.new(File.expand_path('../../', __FILE__))
+
+APP_NAME = APP_ROOT.basename.to_s
+
+configure do
+  # By default, Sinatra assumes that the root is the file that calls the configure block.
+  # Since this is not the case for us, we set it manually.
+  set :root, APP_ROOT.to_path
+  # See: http://www.sinatrarb.com/faq.html#sessions
+  enable :sessions
+  set :session_secret, ENV['SESSION_SECRET'] || 'this is a secret shhhhh'
+
+  # Set the views to
+  set :views, File.join(Sinatra::Application.root, "app", "views")
+end
+
+# Set up the controllers and helpers
+Dir[APP_ROOT.join('app', 'controllers', '*.rb')].each { |file| require file }
+Dir[APP_ROOT.join('app', 'helpers', '*.rb')].each { |file| require file }
+
+# Set up the database and models
+require APP_ROOT.join('config', 'database')
 
 # Include all of ActiveSupport's core class extensions, e.g., String#camelize
 require 'active_support/core_ext'
-
-namespace :generate do
-  desc "Create an empty model in app/models, e.g., rake generate:model NAME=User"
-  task :model do
-    unless ENV.has_key?('NAME')
-      raise "Must specificy model name, e.g., rake generate:model NAME=User"
-    end
-
-    model_name     = ENV['NAME'].camelize
-    model_filename = ENV['NAME'].underscore + '.rb'
-    model_path = APP_ROOT.join('app', 'models', model_filename)
-
-    if File.exist?(model_path)
-      raise "ERROR: Model file '#{model_path}' already exists"
-    end
-
-  puts "Creating #{model_path}"
-  File.open(model_path, 'w+') do |f|
-    f.write(<<-EOF.strip_heredoc)
-      class #{model_name} < ActiveRecord::Base
-        # Remember to create a migration!
-      end
-      EOF
-    end
-  end
-
-  desc "Create an empty migration in db/migrate, e.g., rake generate:migration NAME=create_tasks"
-  task :migration do
-    unless ENV.has_key?('NAME')
-      raise "Must specificy migration name, e.g., rake generate:migration NAME=create_tasks"
-    end
-
-    name     = ENV['NAME'].camelize
-    filename = "%s_%s.rb" % [Time.now.strftime('%Y%m%d%H%M%S'), ENV['NAME'].underscore]
-    path     = APP_ROOT.join('db', 'migrate', filename)
-
-    if File.exist?(path)
-      raise "ERROR: File '#{path}' already exists"
-    end
-
-    puts "Creating #{path}"
-    File.open(path, 'w+') do |f|
-      f.write(<<-EOF.strip_heredoc)
-        class #{name} < ActiveRecord::Migration
-          def change
-          end
-        end
-        EOF
-      end
-    end
-
-    desc "Create an empty model spec in spec, e.g., rake generate:spec NAME=user"
-    task :spec do
-      unless ENV.has_key?('NAME')
-        raise "Must specificy migration name, e.g., rake generate:spec NAME=user"
-      end
-
-      name     = ENV['NAME'].camelize
-      filename = "%s_spec.rb" % ENV['NAME'].underscore
-      path     = APP_ROOT.join('spec', filename)
-
-      if File.exist?(path)
-        raise "ERROR: File '#{path}' already exists"
-      end
-
-      puts "Creating #{path}"
-      File.open(path, 'w+') do |f|
-        f.write(<<-EOF.strip_heredoc)
-          require 'spec_helper'
-          describe #{name} do
-          pending "add some examples to (or delete) #{__FILE__}"
-        end
-        EOF
-      end
-    end
-
-  end
-
-  namespace :db do
-    desc "Create the database at #{DB_NAME}"
-    task :create do
-      puts "Creating database #{DB_NAME} if it doesn't exist..."
-      exec("createdb #{DB_NAME}")
-    end
-
-    desc "Drop the database at #{DB_NAME}"
-    task :drop do
-      puts "Dropping database #{DB_NAME}..."
-      exec("dropdb #{DB_NAME}")
-    end
-
-    desc "Reset the database at #{DB_NAME}"
-    task :reset do
-      puts "Dropping database #{DB_NAME}..."
-      exec("dropdb #{DB_NAME}")
-      puts "Creating database #{DB_NAME} if it doesn't exist..."
-      exec("createdb #{DB_NAME}")
-      ActiveRecord::Migrator.migrations_paths << File.dirname(__FILE__) + 'db/migrate'
-      ActiveRecord::Migration.verbose = ENV["VERBOSE"] ? ENV["VERBOSE"] == "true" : true
-      ActiveRecord::Migrator.migrate(ActiveRecord::Migrator.migrations_paths, ENV["VERSION"] ? ENV["VERSION"].to_i : nil) do |migration|
-        ENV["SCOPE"].blank? || (ENV["SCOPE"] == migration.scope)
-        require APP_ROOT.join('db', 'seeds.rb')
-      end
-    end
-
-    desc "Migrate the database (options: VERSION=x, VERBOSE=false, SCOPE=blog)."
-    task :migrate do
-      ActiveRecord::Migrator.migrations_paths << File.dirname(__FILE__) + 'db/migrate'
-      ActiveRecord::Migration.verbose = ENV["VERBOSE"] ? ENV["VERBOSE"] == "true" : true
-      ActiveRecord::Migrator.migrate(ActiveRecord::Migrator.migrations_paths, ENV["VERSION"] ? ENV["VERSION"].to_i : nil) do |migration|
-        ENV["SCOPE"].blank? || (ENV["SCOPE"] == migration.scope)
-      end
-    end
-
-    desc "Populate the database with dummy data by running db/seeds.rb"
-    task :seed do
-      require APP_ROOT.join('db', 'seeds.rb')
-    end
-
-    desc "rollback your migration--use STEPS=number to step back multiple times"
-    task :rollback do
-      steps = (ENV['STEPS'] || 1).to_i
-      ActiveRecord::Migrator.rollback('db/migrate', steps)
-      Rake::Task['db:version'].invoke if Rake::Task['db:version']
-    end
-
-    desc "Returns the current schema version number"
-    task :version do
-      puts "Current version: #{ActiveRecord::Migrator.current_version}"
-    end
-  end
-
-  desc 'Start PRY with application environment loaded'
-  task "console" do
-    exec "pry -r./config/environment"
-  end
-
-  desc "Run the specs"
-  RSpec::Core::RakeTask.new(:spec)
-
-  task :default  => :specs
