@@ -14,7 +14,6 @@ gem 'rake'
 gem 'bcrypt'
 gem 'faker'
 gem 'shotgun'
-gem 'dotenv'
 
 
 group :test do
