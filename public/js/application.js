@@ -1,5 +1,4 @@
-var accessToken = "<your agent access token>";
-var subscriptionKey = "<your agent subscription key>";
+var accessToken = "d6d6055ec0444051b03c39aa03ac769c";
 var baseUrl = "https://api.api.ai/v1/";
 
 $(document).ready(function() {
@@ -63,8 +62,7 @@ $(document).ready(function() {
       contentType: "application/json; charset=utf-8",
       dataType: "json",
       headers: {
-        "Authorization": "Bearer " + accessToken,
-        "ocp-apim-subscription-key": subscriptionKey
+        "Authorization": "Bearer " + accessToken
       },
       data: JSON.stringify({ q: text, lang: "en" }),
       success: function(data) {
